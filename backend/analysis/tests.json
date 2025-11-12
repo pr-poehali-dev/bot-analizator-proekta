@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "name": "Save analysis result",
+      "method": "POST",
+      "body": {
+        "userId": 1,
+        "analysisType": "psychology",
+        "score": 85,
+        "answers": {
+          "q1": "Часто",
+          "q2": "Иногда",
+          "q3": "Редко"
+        },
+        "recommendations": [
+          "Начните вести дневник эмоций",
+          "Попробуйте медитацию"
+        ]
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get user analyses",
+      "method": "GET",
+      "queryParams": {
+        "userId": "1"
+      },
+      "expectedStatus": 200
+    }
+  ]
+}

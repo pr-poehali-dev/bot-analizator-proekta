@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Icon from '@/components/ui/icon';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, BarChart, Bar } from 'recharts';
+import AnalysisQuestionnaire from '@/components/AnalysisQuestionnaire';
+import { useToast } from '@/hooks/use-toast';
 
 const analysisTypes = [
   {
@@ -121,8 +123,67 @@ const recommendations = [
   }
 ];
 
+const API_URL = 'https://functions.poehali.dev/29c703fc-5830-42ad-821e-def87a08c8a6';
+
 export default function Index() {
   const [selectedAnalysis, setSelectedAnalysis] = useState<string | null>(null);
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+  const [userScores, setUserScores] = useState<Record<string, number>>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    loadUserAnalyses();
+  }, []);
+
+  const loadUserAnalyses = async () => {
+    setIsLoading(true);
+    const response = await fetch(`${API_URL}?userId=1`);
+    const data = await response.json();
+    
+    if (data.analyses && data.analyses.length > 0) {
+      const latestScores: Record<string, number> = {};
+      data.analyses.forEach((analysis: any) => {
+        if (!latestScores[analysis.analysisType]) {
+          latestScores[analysis.analysisType] = analysis.score;
+        }
+      });
+      setUserScores(latestScores);
+    }
+    setIsLoading(false);
+  };
+
+  const handleStartAnalysis = (analysisType: string) => {
+    setSelectedAnalysis(analysisType);
+    setShowQuestionnaire(true);
+  };
+
+  const handleCompleteAnalysis = async (score: number, answers: Record<string, string>) => {
+    const analysisType = analysisTypes.find(t => t.id === selectedAnalysis);
+    if (!analysisType) return;
+
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: 1,
+        analysisType: selectedAnalysis,
+        score,
+        answers,
+        recommendations: recommendations.find(r => r.category === analysisType.title)?.tips || []
+      })
+    });
+
+    if (response.ok) {
+      toast({
+        title: '✨ Анализ завершён!',
+        description: `Ваш результат: ${score}%. Рекомендации обновлены.`
+      });
+      setUserScores(prev => ({ ...prev, [selectedAnalysis!]: score }));
+      setShowQuestionnaire(false);
+      setSelectedAnalysis(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
@@ -148,36 +209,39 @@ export default function Index() {
 
           <TabsContent value="analysis" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {analysisTypes.map((type, index) => (
-                <Card
-                  key={type.id}
-                  className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-primary/50 animate-slide-up overflow-hidden"
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                  onClick={() => setSelectedAnalysis(type.id)}
-                >
-                  <div className={`h-2 bg-gradient-to-r ${type.color}`} />
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className={`p-3 rounded-xl bg-gradient-to-br ${type.color} group-hover:scale-110 transition-transform`}>
-                        <Icon name={type.icon} size={24} className="text-white" />
+              {analysisTypes.map((type, index) => {
+                const currentScore = userScores[type.id] || type.score;
+                return (
+                  <Card
+                    key={type.id}
+                    className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-primary/50 animate-slide-up overflow-hidden"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                    onClick={() => handleStartAnalysis(type.id)}
+                  >
+                    <div className={`h-2 bg-gradient-to-r ${type.color}`} />
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div className={`p-3 rounded-xl bg-gradient-to-br ${type.color} group-hover:scale-110 transition-transform`}>
+                          <Icon name={type.icon} size={24} className="text-white" />
+                        </div>
+                        <div className="text-right">
+                          <div className="text-3xl font-bold">{currentScore}%</div>
+                          <div className="text-xs text-muted-foreground">оценка</div>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-3xl font-bold">{type.score}%</div>
-                        <div className="text-xs text-muted-foreground">оценка</div>
-                      </div>
-                    </div>
-                    <CardTitle className="mt-4">{type.title}</CardTitle>
-                    <CardDescription>{type.description}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Progress value={type.score} className="h-2" />
-                    <Button className="w-full mt-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors" variant="outline">
-                      Начать анализ
-                      <Icon name="ArrowRight" size={16} className="ml-2" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+                      <CardTitle className="mt-4">{type.title}</CardTitle>
+                      <CardDescription>{type.description}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Progress value={currentScore} className="h-2" />
+                      <Button className="w-full mt-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors" variant="outline">
+                        Начать анализ
+                        <Icon name="ArrowRight" size={16} className="ml-2" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </TabsContent>
 
@@ -311,6 +375,17 @@ export default function Index() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {showQuestionnaire && selectedAnalysis && (
+        <AnalysisQuestionnaire
+          analysisType={selectedAnalysis}
+          onComplete={handleCompleteAnalysis}
+          onClose={() => {
+            setShowQuestionnaire(false);
+            setSelectedAnalysis(null);
+          }}
+        />
+      )}
     </div>
   );
 }
